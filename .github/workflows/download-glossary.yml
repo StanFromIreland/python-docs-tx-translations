@@ -1,0 +1,68 @@
+name: Download glossary from Transifex
+
+on:
+  schedule:
+    - cron: "0 12 */2 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GLOSSARY: python_global.csv
+
+jobs:
+  download:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3'
+          cache: 'pip'
+          pip-install: requests
+
+      - name: Run download script
+        run: python scripts/download-glossary.py
+        env:
+          TX_TOKEN: ${{ secrets.TX_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: glossary
+          path: ${{ env.GLOSSARY }}
+
+  commit:
+    runs-on: ubuntu-latest
+    needs: download
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: python-doc-glossary
+
+      - name: Download artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: glossary
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add ${{ env.GLOSSARY }}
+
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Auto-update glossary as of $(date +'%Y.%m.%d')"
+            git push
+          fi
